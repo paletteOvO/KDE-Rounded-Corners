@@ -19,63 +19,95 @@ out vec4 fragColor;
 bool isDrawingShadows() { return  windowHasDecoration && shadowColor.a > 0.0; }
 bool isDrawingOutline() { return  outlineColor.a > 0.0 && outlineThickness > 0.0; }
 
+float parametricBlend(float t) {
+    float sqt = t * t;
+    return sqt / (2.0 * (sqt - t) + 1.0);
+}
+
+float revSqBlend(float x) {
+    // fit of reverse square
+    // float a = 0.112372;
+    // return 1 / (8 * (1 - x + a)) - a;
+    float a = 0.059017;
+    return 1 / (16 * (1 - x + a)) - a;
+    // float a = 0.038516;
+    // return 1 / (25 * (1 - x + a)) - a;
+
+}
+
 vec4 shadowCorner(float distance_from_center) {
-    float percent = -distance_from_center/shadowSize + 1;
+    float percent = (shadowSize - distance_from_center) / shadowSize;
     if(percent < 0)
         return vec4(0,0,0,0);
-    else
-        return vec4(shadowColor.rgb * shadowColor.a * percent, shadowColor.a * percent);
+    else {
+        float a = revSqBlend(shadowColor.a * percent);
+        return vec4(shadowColor.rgb * a, a);
+    }
 }
 
 vec4 shapeCorner(vec2 coord0, vec4 tex, vec2 center) {
-    float distance_from_center = distance(coord0, center);
-    vec4 c = isDrawingShadows() ? shadowCorner(distance_from_center) : vec4(0,0,0,0);
+    float d = distance(coord0, center);
+    float distance_from_edge = abs(d - radius);
+
+    vec4 c = isDrawingShadows() ? shadowCorner(distance_from_edge) : vec4(0,0,0,0);
 
     if(isDrawingOutline()) {
         vec4 outlineOverlay = vec4(mix(tex.rgb, outlineColor.rgb, outlineColor.a), 1.0);
 
-        if (distance_from_center < radius - outlineThickness/2.0) {
-            float antialiasing = clamp(radius-outlineThickness+0.5-distance_from_center, 0.0, 1.0);
+        if(d <= radius) {
+            float antialiasing = clamp(distance_from_edge - outlineThickness, 0.0, 1.0);
             return mix(outlineOverlay, tex, antialiasing);
-        }
-        else {
-            float antialiasing = clamp(distance_from_center-radius+0.5, 0.0, 1.0);
+        } else {
+            float antialiasing = clamp(distance_from_edge, 0.0, 1.0);
             return mix(outlineOverlay, c, antialiasing);
         }
     }
     else {
-        float antialiasing = clamp(radius-distance_from_center, 0.0, 1.0);
-        return mix(c, tex, antialiasing);
+        if(d <= radius) {
+            return tex;
+        } else {
+            float antialiasing = clamp(distance_from_edge, 0.0, 1.0);
+            return mix(tex, c, antialiasing);
+        }
     }
 }
 
 void main(void)
 {
     vec4 tex = texture(front, texcoord0);
-    vec2 coord0 = vec2(texcoord0.x * windowExpandedSize.x - windowTopLeft.x,
-                    (1-texcoord0.y)* windowExpandedSize.y - windowTopLeft.y);
+    vec2 coord0 = vec2(texcoord0.x * windowExpandedSize.x,
+                    (1-texcoord0.y)* windowExpandedSize.y);
 
-    if (coord0.y < radius) {
-        if (coord0.x < radius)
-            tex = shapeCorner(coord0, tex, vec2(radius, radius));
-        else if (coord0.x > windowSize.x - radius)
-            tex = shapeCorner(coord0, tex, vec2(windowSize.x - radius, radius));
-        else if (coord0.y < outlineThickness)
-            tex = shapeCorner(coord0, tex, vec2(coord0.x, radius));
-    }
-    else if (coord0.y > windowSize.y - radius) {
-        if (coord0.x < radius)
-            tex = shapeCorner(coord0, tex, vec2(radius, windowSize.y - radius));
-        else if (coord0.x > windowSize.x - radius)
-            tex = shapeCorner(coord0, tex, vec2(windowSize.x - radius, windowSize.y - radius));
-        else if (coord0.y > windowSize.y - outlineThickness)
-            tex = shapeCorner(coord0, tex, vec2(coord0.x, windowSize.y - radius));
-    }
-    else {
-        if (coord0.x < radius)
-            tex = shapeCorner(coord0, tex, vec2(radius, coord0.y));
-        else if (coord0.x > windowSize.x - radius)
-            tex = shapeCorner(coord0, tex, vec2(windowSize.x - radius, coord0.y));
+    if (coord0.y < windowTopLeft.y + radius) {
+        if (coord0.x < windowTopLeft.x + radius) {
+            // topLeft corner
+            tex = shapeCorner(coord0, tex, vec2(windowTopLeft.x + radius, windowTopLeft.y + radius));
+        } else if (coord0.x > windowTopLeft.x + windowSize.x - radius) {
+            // topRight corner
+            tex = shapeCorner(coord0, tex, vec2(windowTopLeft.x + windowSize.x - radius, windowTopLeft.y + radius));
+        } else {
+            // top
+            tex = shapeCorner(coord0, tex, vec2(coord0.x, windowTopLeft.y + radius));
+        }
+    } else if (coord0.y > windowTopLeft.y + windowSize.y - radius) {
+        if (coord0.x < windowTopLeft.x + radius) {
+            // bottomLeft corner
+            tex = shapeCorner(coord0, tex, vec2(windowTopLeft.x + radius, windowTopLeft.y + windowSize.y - radius));
+        } else if (coord0.x > windowTopLeft.x + windowSize.x - radius) {
+            // bottomRight corner
+            tex = shapeCorner(coord0, tex, vec2(windowTopLeft.x + windowSize.x - radius, windowTopLeft.y + windowSize.y - radius));
+        } else {
+            // bottom
+            tex = shapeCorner(coord0, tex, vec2(coord0.x, windowTopLeft.y + windowSize.y - radius));
+        }
+    } else {
+        if (coord0.x < windowTopLeft.x + radius) {
+            // left
+            tex = shapeCorner(coord0, tex, vec2(windowTopLeft.x + radius, coord0.y));
+        } else if (coord0.x > windowTopLeft.x + windowSize.x - radius) {
+            // right
+            tex = shapeCorner(coord0, tex, vec2(windowTopLeft.x + windowSize.x - radius, coord0.y));
+        }
     }
 
     if (saturation != 1.0) {
