@@ -55,15 +55,16 @@ vec4 shapeCorner(vec2 coord0, vec4 tex, vec2 center) {
         vec4 outlineOverlay = vec4(mix(tex.rgb, outlineColor.rgb, outlineColor.a), 1.0);
 
         if(d <= radius) {
-            float antialiasing = clamp(distance_from_edge - outlineThickness, 0.0, 1.0);
+            // within corner
+            float antialiasing = clamp(distance_from_edge - (outlineThickness / 2.0), 0.0, 1.0);
             return mix(outlineOverlay, tex, antialiasing);
         } else {
             float antialiasing = clamp(distance_from_edge, 0.0, 1.0);
             return mix(outlineOverlay, c, antialiasing);
         }
-    }
-    else {
+    } else {
         if(d <= radius) {
+            // within corner
             return tex;
         } else {
             float antialiasing = clamp(distance_from_edge, 0.0, 1.0);
